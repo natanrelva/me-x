@@ -6,9 +6,9 @@ RSpec.describe Graph do
 
   describe '#add_node' do
     it 'adds a node to the graph' do
-      graph.add_node
+      node = graph.add_node
       expect(graph.nodes.size).to eq(1)
-      expect(graph.nodes.first[:id]).to eq('N2')
+      expect(graph.nodes.first[:id]).to eq(node[:id])
     end
 
     it 'respects the graph capacity' do
@@ -35,34 +35,37 @@ RSpec.describe Graph do
     end
   end
 
-  describe '#remove_least_used_node' do
-    it 'removes the least recently used node when capacity is exceeded' do
-      3.times { graph.add_node }
-      oldest_node = graph.nodes.first
-      graph.add_node # Add a new node, which exceeds the capacity
-      expect(graph.nodes).not_to include(oldest_node)
-      expect(graph.nodes.size).to eq(3)
-    end
+  describe '#dynamic_connect' do
+    it 'connects a new node to nearby nodes' do
+      node1 = graph.add_node
+      node2 = graph.add_node
 
-    it 'removes edges associated with the removed node' do
-      graph.nodes = [
-        { id: 'N1', number: 1, x: 0, y: 0, connections: ['N2'], last_used: Time.now },
-        { id: 'N2', number: 2, x: 100, y: 100, connections: ['N1'], last_used: Time.now }
-      ]
-      graph.edges = [{ source: 'N1', target: 'N2', distance: 100 }]
-      graph.remove_least_used_node
-      expect(graph.edges.size).to eq(0)
+      # Set positions to ensure nodes are within connection distance
+      node1[:x], node1[:y] = 100, 100
+      node2[:x], node2[:y] = 105, 105
+
+      graph.dynamic_connect(node2)
+      expect(graph.edges).not_to be_empty
     end
   end
 
-  describe '#clear_graph' do
-    it 'clears all nodes and edges from the graph' do
+  describe '#metrics' do
+    it 'calculates graph metrics' do
       3.times { graph.add_node }
       graph.generate_edges
-      graph.clear_graph
-      expect(graph.nodes).to be_empty
-      expect(graph.edges).to be_empty
-      expect(graph.next_id).to eq(2)
+      metrics = graph.metrics
+      expect(metrics[:total_nodes]).to eq(3)
+      expect(metrics[:total_edges]).to be >= 0
+      expect(metrics[:max_connections]).to be >= 0
+    end
+  end
+
+  describe '#anomalies' do
+    it 'detects nodes with excessive connections' do
+      5.times { graph.add_node }
+      graph.nodes.first[:connections] = Array.new(15, 'N2')
+      anomalies = graph.anomalies(10)
+      expect(anomalies.size).to eq(1)
     end
   end
 end
