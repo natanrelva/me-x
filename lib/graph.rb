@@ -17,7 +17,7 @@ class Graph
 
     node = { id: id, number: number, x: rand(800), y: rand(600), connections: [], last_used: Time.now }
     @nodes << node
-    node # Return the added node for further processing
+    node
   end
 
   def generate_edges
@@ -38,12 +38,6 @@ class Graph
     least_used_node = @nodes.min_by { |node| node[:last_used] }
     @edges.reject! { |edge| edge[:source] == least_used_node[:id] || edge[:target] == least_used_node[:id] }
     @nodes.delete(least_used_node)
-  end
-
-  def clear_graph
-    @nodes.clear
-    @edges.clear
-    @next_id = 2
   end
 
   def dynamic_connect(node)
@@ -68,5 +62,9 @@ class Graph
 
   def anomalies(threshold = 10)
     @nodes.select { |node| node[:connections].size > threshold }
+  end
+
+  def cluster_nodes
+    @nodes.group_by { |node| node[:number] % 5 }
   end
 end

@@ -3,16 +3,16 @@ require_relative './log_parser'
 require 'sqlite3'
 
 class GraphManager
-  attr_reader :graph
+  attr_reader :graph, :metrics_history
 
   def initialize(graph = Graph.new, batch_size = 10, db_path = 'graph.db')
-    @graph = graph || Graph.new # Ensure graph is always initialized
+    @graph = graph || Graph.new
     @log_parser = LogParser.new
     @log_buffer = []
     @batch_size = batch_size
     @db = SQLite3::Database.new(db_path)
     setup_database
-    @metrics_history = []
+    @metrics_history = [] # Initialize the metrics history
   end
 
   def setup_database
@@ -33,6 +33,16 @@ class GraphManager
         distance REAL
       );
     SQL
+
+    @db.execute <<-SQL
+      CREATE TABLE IF NOT EXISTS metrics_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT,
+        total_nodes INTEGER,
+        total_edges INTEGER,
+        avg_connections REAL
+      );
+    SQL
   end
 
   def process_log(log)
@@ -44,13 +54,20 @@ class GraphManager
     @log_buffer.each do |log|
       begin
         event = @log_parser.parse(log)
-        case event[:type]
-        when :add_node
-          @graph.add_node
-        when :add_edge
-          create_edge(event[:source], event[:target])
+  
+        # Ensure event is not nil before accessing its type
+        if event
+          case event[:type]
+          when :add_node
+            node = @graph.add_node
+            @graph.dynamic_connect(node)
+          when :add_edge
+            create_edge(event[:source], event[:target])
+          else
+            puts "Unhandled event type: #{event[:type]}"
+          end
         else
-          puts "Unhandled event type: #{event[:type]}"
+          puts "Ignoring unrecognized event"
         end
       rescue RuntimeError => e
         puts "Error processing log: #{e.message}"
@@ -61,11 +78,18 @@ class GraphManager
   
 
   def record_metrics
-    @metrics_history << { timestamp: Time.now, metrics: @graph.metrics }
-  end
+    metrics = @graph.metrics
+    # Add the current metrics to the metrics history
+    @metrics_history << {
+      timestamp: Time.now.iso8601,
+      total_nodes: metrics[:total_nodes],
+      total_edges: metrics[:total_edges],
+      avg_connections: metrics[:avg_connections]
+    }
 
-  def metrics_history
-    @metrics_history
+    # Also store the metrics in the database
+    @db.execute("INSERT INTO metrics_history (timestamp, total_nodes, total_edges, avg_connections) VALUES (?, ?, ?, ?)",
+                [Time.now.iso8601, metrics[:total_nodes], metrics[:total_edges], metrics[:avg_connections]])
   end
 
   def save_graph
@@ -82,7 +106,8 @@ class GraphManager
   end
 
   def load_graph
-    @graph.clear_graph
+    @graph.nodes.clear
+    @graph.edges.clear
 
     @db.execute("SELECT * FROM nodes") do |row|
       @graph.nodes << { id: row[0], number: row[1], x: row[2], y: row[3], connections: [] }

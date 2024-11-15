@@ -1,4 +1,4 @@
-require 'json'
+require 'json'  # This line is necessary to use JSON.parse
 
 class LogParser
   def parse(log)
@@ -10,6 +10,7 @@ class LogParser
     when 'transition'
       { type: :add_edge, source: parsed[:source], target: parsed[:target] }
     else
+      # Raise an error for unknown event types
       raise "Unknown event type: #{parsed[:event]}"
     end
   end

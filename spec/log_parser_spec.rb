@@ -18,8 +18,10 @@ RSpec.describe LogParser do
     end
 
     it 'raises an error for unknown event type' do
-      log = '{"event": "unknown_event"}'
-      expect { parser.parse(log) }.to raise_error(RuntimeError, 'Unknown event type: unknown_event')
+        log = '{"event": "unknown_event"}'
+  
+    # Expect the LogParser to raise a RuntimeError for unknown event types
+        expect { parser.parse(log) }.to raise_error(RuntimeError, 'Unknown event type: unknown_event')
     end
   end
 end
