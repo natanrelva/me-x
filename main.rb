@@ -1,177 +1,223 @@
-# graph_builder.rb
-require 'json'
 require 'erb'
+require 'json'
+require 'webrick'
 
-class Graph
+# Função para verificar se um número é primo de forma otimizada
+def primo?(n)
+  return false if n <= 1
+  return true if n == 2
+  return false if n.even?
+  (3..Math.sqrt(n).to_i).step(2).none? { |i| n % i == 0 }
+end
+
+# Função para calcular distância Euclidiana entre dois pontos
+def distancia(x1, y1, x2, y2)
+  Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+end
+
+class Grafo
+  attr_accessor :nodes, :links, :next_id
+
   def initialize
     @nodes = []
-    @edges = []
+    @links = []
+    @next_id = 2 # Começamos a partir de 2, pois 1 não é primo
   end
 
-  # Adiciona um nó ao grafo com nome, descrição e comportamentos
-  def add_node(name, description = "Sem descrição")
-    node = { id: name, description: description, behaviors: [] }
-    @nodes << node
-    node
+  # Adiciona um nó ao grafo com um número primo associado
+  def adicionar_no
+    id = "N#{@next_id}"
+    num = @next_id
+    @next_id += 1
+    @nodes << { id: id, num: num, x: rand(800), y: rand(600), connections: [] }
   end
 
-  # Cria uma aresta entre dois nós
-  def add_edge(node1, node2)
-    @edges << { source: node1[:id], target: node2[:id] }
-  end
+  # Gerador de função matemática para criar arestas entre nós, baseado na proximidade
+  def gerar_arestas
+    @nodes.each do |source|
+      @nodes.each do |target|
+        next if source == target
 
-  # Atribui um comportamento a um nó
-  def add_behavior(node_name, behavior)
-    node = @nodes.find { |n| n[:id] == node_name }
-    if node
-      node[:behaviors] << behavior
-    else
-      puts "Nó #{node_name} não encontrado."
+        # Usar a distância Euclidiana para conectar nós próximos
+        dist = distancia(source[:x], source[:y], target[:x], target[:y])
+        if dist < 150 && !source[:connections].include?(target[:id])
+          source[:connections] << target[:id]
+          @links << { source: source[:id], target: target[:id], dist: dist }
+        end
+      end
     end
   end
 
-  # Descrição de um nó
-  def describe_node(node_name)
-    node = @nodes.find { |n| n[:id] == node_name }
-    if node
-      node[:description]
-    else
-      "Nó #{node_name} não encontrado."
+  # Método de meta-programação para conectar os nós dinamicamente com base em seu comportamento
+  def conectar_comportamento
+    @nodes.each do |node|
+      define_singleton_method(:conectar_vizinhos) do
+        gerar_arestas
+      end
+      node[:connections] = []
     end
   end
 
-  # Exibe o grafo em formato JSON
-  def to_json
-    { nodes: @nodes, links: @edges }.to_json
-  end
-end
+  # Método para gerar o HTML e simular o fluxo contínuo
+  def gerar_html
+    template = erb_template
+    server = iniciar_servidor
 
-def generate_html(graph)
-  html_template = <<-HTML
-  <!DOCTYPE html>
-  <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Graph Visualization</title>
-    <script src="https://d3js.org/d3.v6.min.js"></script>
-    <style>
-      svg { width: 100%; height: 600px; border: 1px solid black; }
-      .node { fill: lightblue; stroke: black; stroke-width: 1.5px; cursor: pointer; }
-      .link { stroke: gray; stroke-width: 1.5px; }
-    </style>
-  </head>
-  <body>
-    <h1>Interactive Graph Visualization</h1>
-    <svg id="graph"></svg>
-  
-    <script>
-      const graphData = <%= graph.to_json %>;
-  
-      const width = 800;
-      const height = 600;
-      const svg = d3.select("#graph").attr("width", width).attr("height", height);
-  
-      const simulation = d3.forceSimulation(graphData.nodes)
-        .force("link", d3.forceLink(graphData.links).id(d => d.id).distance(200))
-        .force("charge", d3.forceManyBody().strength(-500))
-        .force("center", d3.forceCenter(width / 2, height / 2));
-  
-      const link = svg.append("g").selectAll(".link")
-        .data(graphData.links)
-        .enter().append("line")
-        .attr("class", "link");
-  
-      const node = svg.append("g").selectAll(".node")
-        .data(graphData.nodes)
-        .enter().append("circle")
-        .attr("class", "node")
-        .attr("r", 20)
-        .call(d3.drag()
-          .on("start", dragstart)
-          .on("drag", dragged)
-          .on("end", dragend));
-  
-      node.append("title").text(d => d.id);
-  
-      simulation.on("tick", function() {
-        link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
-            .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
-        node.attr("cx", d => d.x).attr("cy", d => d.y);
-      });
-  
-      function dragstart(event, d) {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
-      }
-  
-      function dragged(event, d) {
-        d.fx = event.x;
-        d.fy = event.y;
-      }
-  
-      function dragend(event, d) {
-        if (!event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
-      }
-    </script>
-  </body>
-  </html>
-  HTML
-
-  File.open("interactive_graph.html", "w") do |file|
-    file.puts ERB.new(html_template).result(binding)
-  end
-  puts "Arquivo HTML gerado: interactive_graph.html"
-end
-
-# Instanciando o grafo
-graph = Graph.new
-
-# Loop de interação no terminal
-while true
-  puts "Comandos disponíveis:"
-  puts "1. add_node <NodeName> <Description> - Adiciona um nó"
-  puts "2. add_edge <Node1> <Node2> - Cria uma aresta entre dois nós"
-  puts "3. add_behavior <NodeName> <Behavior> - Atribui um comportamento a um nó"
-  puts "4. describe <NodeName> - Descreve o nó"
-  puts "5. show - Exibe o grafo atual em JSON"
-  puts "6. quit - Sai do programa"
-
-  print "Digite um comando: "
-  input = gets.chomp
-
-  case input
-  when /add_node (\w+) (.+)/
-    node_name = $1
-    description = $2
-    graph.add_node(node_name, description)
-    generate_html(graph)
-  when /add_edge (\w+) (\w+)/
-    node1 = graph.instance_variable_get(:@nodes).find { |n| n[:id] == $1 }
-    node2 = graph.instance_variable_get(:@nodes).find { |n| n[:id] == $2 }
-    
-    if node1 && node2
-      graph.add_edge(node1, node2)
-      generate_html(graph)
-    else
-      puts "Nós não encontrados!"
+    # Iniciar servidor e enviar conteúdo de forma incremental
+    server.mount_proc '/' do |req, res|
+      res['Content-Type'] = 'text/html'
+      res.body = template
     end
-  when /add_behavior (\w+) (.+)/
-    node_name = $1
-    behavior = $2
-    graph.add_behavior(node_name, behavior)
-    puts "Comportamento '#{behavior}' adicionado ao nó #{node_name}."
-  when /describe (\w+)/
-    node_name = $1
-    puts graph.describe_node(node_name)
-  when "show"
-    puts graph.to_json
-  when "quit"
-    break
-  else
-    puts "Comando inválido!"
+
+    trap('INT') { server.shutdown }
+    server.start
+  end
+
+  private
+
+  # ERB Template que define o HTML do grafo
+  def erb_template
+    <<-HTML
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Visualização de Grafo com Conexões Dinâmicas</title>
+      <script src="https://d3js.org/d3.v7.min.js"></script>
+      <style>
+        svg { width: 100%; height: 600px; }
+        .node { fill: lightblue; stroke: black; stroke-width: 1.5px; }
+        .link { stroke: #999; stroke-width: 2px; opacity: 0.6; }
+        text { font-family: Arial, sans-serif; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <h1>Visualização de Grafo com Conexões Dinâmicas</h1>
+      <svg id="graph"></svg>
+      <script>
+        let nodes = [];
+        let links = [];
+
+        const width = 800;
+        const height = 600;
+
+        const svg = d3.select("#graph").attr("width", width).attr("height", height);
+
+        const simulation = d3.forceSimulation(nodes)
+          .force("link", d3.forceLink(links).id(d => d.id).distance(150))
+          .force("charge", d3.forceManyBody().strength(-100))
+          .force("center", d3.forceCenter(width / 2, height / 2));
+
+        function updateGraph() {
+          // Atualizar links
+          const link = svg.selectAll(".link")
+            .data(links)
+            .join("line")
+            .attr("class", "link");
+
+          // Atualizar nós
+          const node = svg.selectAll(".node")
+            .data(nodes)
+            .join("circle")
+            .attr("class", "node")
+            .attr("r", 20)
+            .call(d3.drag()
+              .on("start", dragstart)
+              .on("drag", dragged)
+              .on("end", dragend));
+
+          // Atualizar títulos dos nós
+          node.append("title").text(d => d.id);
+
+          // Adicionar textos com IDs dos nós
+          svg.selectAll("text")
+            .data(nodes)
+            .join("text")
+            .attr("x", d => d.x)
+            .attr("y", d => d.y)
+            .attr("dy", -25)
+            .attr("text-anchor", "middle")
+            .text(d => d.id);
+
+          simulation.nodes(nodes);
+          simulation.force("link").links(links);
+          simulation.alpha(1).restart();
+        }
+
+        function adicionarNoEAtualizar() {
+          let novoNo = { id: "N" + (nodes.length + 1), x: Math.random() * width, y: Math.random() * height };
+          nodes.push(novoNo);
+
+          // Gerar novas arestas com base na proximidade
+          links = [];
+          nodes.forEach((source, i) => {
+            nodes.slice(i + 1).forEach(target => {
+              const dist = Math.sqrt(Math.pow(target.x - source.x, 2) + Math.pow(target.y - source.y, 2));
+              if (dist < 150) {
+                links.push({ source: source, target: target });
+              }
+            });
+          });
+
+          updateGraph();
+        }
+
+        function dragstart(event, d) {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+          d.fx = event.x;
+          d.fy = event.y;
+        }
+
+        function dragend(event, d) {
+          if (!event.active) simulation.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        }
+
+        setInterval(adicionarNoEAtualizar, 2000);
+
+        simulation.on("tick", () => {
+          svg.selectAll(".link")
+            .attr("x1", d => d.source.x)
+            .attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x)
+            .attr("y2", d => d.target.y);
+
+          svg.selectAll(".node")
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y);
+          
+          svg.selectAll("text")
+            .attr("x", d => d.x)
+            .attr("y", d => d.y);
+        });
+      </script>
+    </body>
+    </html>
+    HTML
+  end
+
+  # Inicializar o servidor WEBrick
+  def iniciar_servidor
+    WEBrick::HTTPServer.new(:Port => 8000)
   end
 end
+
+# Criando o grafo
+grafo = Grafo.new
+grafo.adicionar_no
+grafo.adicionar_no
+grafo.adicionar_no
+
+# Gerando as arestas com base na proximidade dos nós
+grafo.gerar_arestas
+
+# Gerando o HTML em fluxo e iniciando o servidor
+grafo.gerar_html
+puts "Servidor iniciado em http://localhost:8000. Acesse no navegador."
